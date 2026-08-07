@@ -1,0 +1,149 @@
+table ip last { # handle 1
+}
+table ip raw { # handle 3
+	chain PRE_NOTRACK { # handle 1
+		tcp dport 443 counter packets 7 bytes 308 notrack # handle 3
+		tcp dport 80 counter packets 0 bytes 0 notrack # handle 5
+	}
+
+	chain OUT_NOTRACK { # handle 2
+		tcp sport 443 counter packets 14 bytes 680 notrack # handle 4
+		tcp sport 80 counter packets 0 bytes 0 notrack # handle 6
+	}
+
+	chain PREROUTING { # handle 7
+		type filter hook prerouting priority raw; policy accept;
+		iifname "eth0" counter packets 1941 bytes 178138 jump PRE_NOTRACK # handle 8
+	}
+
+	chain OUTPUT { # handle 9
+		type filter hook output priority raw; policy accept;
+		oifname "eth0" counter packets 1790 bytes 331843 jump OUT_NOTRACK # handle 10
+	}
+}
+table ip mangle { # handle 4
+	chain KUBE-IPTABLES-HINT { # handle 1
+	}
+
+	chain KUBE-KUBELET-CANARY { # handle 2
+	}
+}
+table ip nat { # handle 5
+	chain KUBE-KUBELET-CANARY { # handle 1
+	}
+
+	chain POSTROUTING { # handle 2
+		type nat hook postrouting priority srcnat; policy accept;
+		ip saddr != 10.6.11.0/24 ip daddr != 10.6.11.0/24 xt match "ipvs"  counter packets 9 bytes 684 snat to 172.16.6.31 fully-random # handle 3
+		xt match "set" xt match "set" xt match "set" counter packets 0 bytes 0 masquerade fully-random # handle 4
+		xt match "ipvs" counter packets 0 bytes 0 jump KUBE-ROUTER-HAIRPIN # handle 6
+	}
+
+	chain KUBE-ROUTER-HAIRPIN { # handle 5
+		ip saddr 10.6.11.22 ip daddr 10.6.11.22 xt match "ipvs" counter packets 0 bytes 0 snat to 10.106.120.144 # handle 7
+		ip saddr 172.16.6.31 ip daddr 172.16.6.31 xt match "ipvs" counter packets 0 bytes 0 snat to 10.106.37.173 # handle 8
+		ip saddr 172.16.6.31 ip daddr 172.16.6.31 xt match "ipvs" counter packets 0 bytes 0 snat to 10.106.88.196 # handle 10
+		ip saddr 172.16.6.31 ip daddr 172.16.6.31 xt match "ipvs" counter packets 0 bytes 0 snat to 10.106.225.38 # handle 12
+	}
+}
+table ip filter { # handle 24
+	chain INPUT { # handle 1
+		type filter hook input priority filter; policy accept;
+		 counter packets 29829 bytes 7051971 jump KUBE-ROUTER-INPUT # handle 14
+		 xt match "set" counter packets 27540 bytes 6550443 jump KUBE-ROUTER-SERVICES # handle 15
+		counter packets 29688 bytes 7024095 jump KUBE-FIREWALL # handle 16
+		iifname "eth0" counter packets 98 bytes 9512 jump external-firewall # handle 17
+	}
+
+	chain FORWARD { # handle 2
+		type filter hook forward priority filter; policy accept;
+		 counter packets 0 bytes 0 jump KUBE-ROUTER-FORWARD # handle 18
+		oifname "eth1"  counter packets 0 bytes 0 accept # handle 19
+		oifname "kube-bridge"  counter packets 0 bytes 0 accept # handle 20
+		iifname "kube-bridge"  counter packets 0 bytes 0 accept # handle 21
+	}
+
+	chain OUTPUT { # handle 3
+		type filter hook output priority filter; policy accept;
+		 counter packets 29289 bytes 56441931 jump KUBE-ROUTER-OUTPUT # handle 22
+		counter packets 29121 bytes 56430603 jump KUBE-FIREWALL # handle 23
+	}
+
+	chain KUBE-FIREWALL { # handle 4
+		ip saddr != 127.0.0.0/8 ip daddr 127.0.0.0/8  ct status dnat counter packets 0 bytes 0 drop # handle 24
+	}
+
+	chain KUBE-KUBELET-CANARY { # handle 5
+	}
+
+	chain KUBE-NWPLCY-DEFAULT { # handle 6
+		 counter packets 0 bytes 0 meta mark set mark or 0x10000 # handle 25
+	}
+
+	chain KUBE-ROUTER-FORWARD { # handle 7
+		ip daddr 10.6.11.22  counter packets 0 bytes 0 jump KUBE-POD-FW-D3ZCLSCFHK2IPHL4 # handle 58
+		ip daddr 10.6.11.22 xt match "physdev"  counter packets 0 bytes 0 jump KUBE-POD-FW-D3ZCLSCFHK2IPHL4 # handle 60
+		ip saddr 10.6.11.22  counter packets 0 bytes 0 jump KUBE-POD-FW-D3ZCLSCFHK2IPHL4 # handle 63
+		ip saddr 10.6.11.22 xt match "physdev"  counter packets 0 bytes 0 jump KUBE-POD-FW-D3ZCLSCFHK2IPHL4 # handle 64
+		 meta mark & 0x00020000 == 0x00020000 counter packets 0 bytes 0 accept # handle 69
+	}
+
+	chain KUBE-ROUTER-INPUT { # handle 8
+		ip daddr 10.96.0.0/12  counter packets 0 bytes 0 return # handle 26
+		meta l4proto tcp  fib daddr type local tcp dport 30000-32767 counter packets 0 bytes 0 return # handle 27
+		meta l4proto udp  fib daddr type local udp dport 30000-32767 counter packets 0 bytes 0 return # handle 28
+		ip saddr 10.6.11.22  counter packets 141 bytes 27876 jump KUBE-POD-FW-D3ZCLSCFHK2IPHL4 # handle 62
+		 meta mark & 0x00020000 == 0x00020000 counter packets 0 bytes 0 accept # handle 71
+	}
+
+	chain KUBE-ROUTER-OUTPUT { # handle 9
+		ip daddr 10.6.11.22  counter packets 168 bytes 11328 jump KUBE-POD-FW-D3ZCLSCFHK2IPHL4 # handle 59
+		ip saddr 10.6.11.22  counter packets 0 bytes 0 jump KUBE-POD-FW-D3ZCLSCFHK2IPHL4 # handle 61
+		 meta mark & 0x00020000 == 0x00020000 counter packets 0 bytes 0 accept # handle 70
+	}
+
+	chain KUBE-ROUTER-SERVICES { # handle 10
+		meta l4proto icmp  icmp type echo-request counter packets 0 bytes 0 accept # handle 29
+		meta l4proto icmp  icmp type time-exceeded counter packets 0 bytes 0 accept # handle 30
+		meta l4proto icmp  icmp type destination-unreachable counter packets 0 bytes 0 accept # handle 31
+		 xt match "set" counter packets 0 bytes 0 accept # handle 32
+		 xt match "set" counter packets 0 bytes 0 reject # handle 33
+	}
+
+	chain external-firewall { # handle 11
+		tcp dport 443  counter packets 0 bytes 0 accept # handle 34
+		tcp dport 80  counter packets 0 bytes 0 accept # handle 35
+		ct state related,established counter packets 38 bytes 7092 accept # handle 36
+		tcp dport 9212  counter packets 2 bytes 120 accept # handle 37
+		meta l4proto icmp icmp type echo-request  counter packets 54 bytes 2060 accept # handle 38
+		meta l4proto icmp xt match "icmp"  counter packets 0 bytes 0 accept # handle 39
+		counter packets 4 bytes 240 drop # handle 40
+	}
+
+	chain KUBE-NWPLCY-XLCHF32THOATH6EY { # handle 12
+		meta l4proto udp  xt match "set" xt match "set" udp dport 53 counter packets 0 bytes 0 meta mark set mark or 0x10000 # handle 41
+		meta l4proto udp  xt match "set" xt match "set" udp dport 53 meta mark & 0x00010000 == 0x00010000 counter packets 0 bytes 0 return # handle 42
+		meta l4proto tcp  xt match "set" xt match "set" tcp dport 53 counter packets 0 bytes 0 meta mark set mark or 0x10000 # handle 43
+		meta l4proto tcp  xt match "set" xt match "set" tcp dport 53 meta mark & 0x00010000 == 0x00010000 counter packets 0 bytes 0 return # handle 44
+		meta l4proto tcp  xt match "set" xt match "set" tcp dport 8443 counter packets 0 bytes 0 meta mark set mark or 0x10000 # handle 45
+		meta l4proto tcp  xt match "set" xt match "set" tcp dport 8443 meta mark & 0x00010000 == 0x00010000 counter packets 0 bytes 0 return # handle 46
+		 xt match "set" xt match "set" counter packets 0 bytes 0 meta mark set mark or 0x10000 # handle 47
+		 xt match "set" xt match "set" meta mark & 0x00010000 == 0x00010000 counter packets 0 bytes 0 return # handle 48
+		meta l4proto tcp  xt match "set" xt match "set" tcp dport 3306 counter packets 0 bytes 0 meta mark set mark or 0x10000 # handle 49
+		meta l4proto tcp  xt match "set" xt match "set" tcp dport 3306 meta mark & 0x00010000 == 0x00010000 counter packets 0 bytes 0 return # handle 50
+		 xt match "set" xt match "set" counter packets 0 bytes 0 meta mark set mark or 0x10000 # handle 51
+		 xt match "set" xt match "set" meta mark & 0x00010000 == 0x00010000 counter packets 0 bytes 0 return # handle 52
+	}
+
+	chain KUBE-POD-FW-D3ZCLSCFHK2IPHL4 { # handle 13
+		 ct state related,established counter packets 285 bytes 37764 accept # handle 57
+		 ct state invalid counter packets 0 bytes 0 drop # handle 56
+		ip daddr 10.6.11.22  fib saddr type local counter packets 24 bytes 1440 accept # handle 55
+		ip saddr 10.6.11.22  counter packets 0 bytes 0 jump KUBE-NWPLCY-DEFAULT # handle 54
+		ip daddr 10.6.11.22  counter packets 0 bytes 0 jump KUBE-NWPLCY-DEFAULT # handle 53
+		 meta mark & 0x00010000 != 0x00010000 limit rate 10/minute burst 10 packets counter packets 0 bytes 0 log group 100 # handle 65
+		 meta mark & 0x00010000 != 0x00010000 counter packets 0 bytes 0 reject # handle 66
+		counter packets 0 bytes 0 meta mark set mark and 0xfffeffff # handle 67
+		 counter packets 0 bytes 0 meta mark set mark or 0x20000 # handle 68
+	}
+}

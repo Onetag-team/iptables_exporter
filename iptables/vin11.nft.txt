@@ -1,0 +1,110 @@
+table ip6 mangle { # handle 1
+	chain KUBE-IPTABLES-HINT { # handle 1
+	}
+
+	chain KUBE-KUBELET-CANARY { # handle 2
+	}
+}
+table ip6 nat { # handle 2
+	chain KUBE-KUBELET-CANARY { # handle 1
+	}
+}
+table ip6 filter { # handle 3
+	chain KUBE-KUBELET-CANARY { # handle 1
+	}
+}
+table ip nat { # handle 8
+	chain POSTROUTING { # handle 1
+		type nat hook postrouting priority srcnat; policy accept;
+		# match-set kube-router-pod-subnets src # ! match-set kube-router-pod-subnets dst # ! match-set kube-router-node-ips dst counter packets 314 bytes 18840 masquerade  # handle 2
+		ip saddr != 10.6.33.0/24 ip daddr != 10.6.33.0/24 # vdir ORIGINAL vmethod MASQ  counter packets 4296 bytes 326065 snat to 172.16.6.11 fully-random # handle 3
+		# vdir ORIGINAL counter packets 4641 bytes 453637 jump KUBE-ROUTER-HAIRPIN # handle 5
+	}
+
+	chain KUBE-ROUTER-HAIRPIN { # handle 4
+		ip saddr 172.16.6.11 ip daddr 172.16.6.11 # vaddr prometheus-prometheus-node-exporter.monitoring.svc.vin.onetag vport 9100 counter packets 0 bytes 0 snat to 10.106.88.196 # handle 6
+		ip saddr 172.16.6.11 ip daddr 172.16.6.11 # vaddr prometheus-smartctl-exporter.monitoring.svc.vin.onetag vport 80 counter packets 0 bytes 0 snat to 10.106.37.173 # handle 7
+		ip saddr 172.16.6.11 ip daddr 172.16.6.11 # vaddr iptables-exporter.kube-system.svc.vin.onetag vport 9455 counter packets 0 bytes 0 snat to 10.106.225.38 # handle 8
+	}
+
+	chain KUBE-KUBELET-CANARY { # handle 9
+	}
+}
+table ip mangle { # handle 67
+	chain KUBE-IPTABLES-HINT { # handle 1
+	}
+
+	chain KUBE-KUBELET-CANARY { # handle 2
+	}
+}
+table ip filter { # handle 3461
+	chain INPUT { # handle 1
+		type filter hook input priority filter; policy accept;
+		 counter packets 381 bytes 235700 jump KUBE-ROUTER-INPUT # handle 11
+		 # match-set kube-router-svip dst counter packets 334 bytes 228136 jump KUBE-ROUTER-SERVICES # handle 12
+		iifname "eth0" counter packets 47 bytes 7564 jump external-firewall # handle 13
+	}
+
+	chain FORWARD { # handle 2
+		type filter hook forward priority filter; policy accept;
+		 counter packets 0 bytes 0 jump KUBE-ROUTER-FORWARD # handle 14
+		oifname "eth1"  counter packets 0 bytes 0 accept # handle 15
+		oifname "kube-bridge"  counter packets 0 bytes 0 accept # handle 16
+		iifname "kube-bridge"  counter packets 0 bytes 0 accept # handle 17
+	}
+
+	chain OUTPUT { # handle 3
+		type filter hook output priority filter; policy accept;
+		 counter packets 367 bytes 423842 jump KUBE-ROUTER-OUTPUT # handle 18
+	}
+
+	chain KUBE-NWPLCY-DEFAULT { # handle 4
+		 counter packets 0 bytes 0 meta mark set mark or 0x10000  # handle 19
+	}
+
+	chain KUBE-ROUTER-FORWARD { # handle 5
+		 meta mark & 0x00020000 == 0x00020000 counter packets 0 bytes 0 accept # handle 47
+	}
+
+	chain KUBE-ROUTER-INPUT { # handle 6
+		ip daddr 10.96.0.0/12  counter packets 0 bytes 0 return # handle 20
+		meta l4proto tcp  fib daddr type local tcp dport 30000-32767 counter packets 0 bytes 0 return # handle 21
+		meta l4proto udp  fib daddr type local udp dport 30000-32767 counter packets 0 bytes 0 return # handle 22
+		 meta mark & 0x00020000 == 0x00020000 counter packets 0 bytes 0 accept # handle 46
+	}
+
+	chain KUBE-ROUTER-OUTPUT { # handle 7
+		 meta mark & 0x00020000 == 0x00020000 counter packets 0 bytes 0 accept # handle 45
+	}
+
+	chain KUBE-ROUTER-SERVICES { # handle 8
+		meta l4proto icmp  icmp type echo-request counter packets 0 bytes 0 accept # handle 23
+		meta l4proto icmp  icmp type time-exceeded counter packets 0 bytes 0 accept # handle 24
+		meta l4proto icmp  icmp type destination-unreachable counter packets 0 bytes 0 accept # handle 25
+		 # match-set kube-router-svip-prt dst,dst counter packets 0 bytes 0 accept # handle 26
+		 # ! match-set kube-router-local-ips dst counter packets 0 bytes 0 reject # handle 27
+	}
+
+	chain external-firewall { # handle 9
+		ct state related,established counter packets 39 bytes 7196 accept # handle 28
+		tcp dport 9212  counter packets 2 bytes 120 accept # handle 29
+		meta l4proto icmp icmp type echo-request  counter packets 4 bytes 128 accept # handle 30
+		meta l4proto icmp icmp type   counter packets 0 bytes 0 accept # handle 31
+		counter packets 2 bytes 120 drop # handle 32
+	}
+
+	chain KUBE-NWPLCY-DE6JKOZKQ4I2IASB { # handle 10
+		meta l4proto udp  # match-set KUBE-SRC-ZS4MTCIZPF4CWF2S src # match-set KUBE-DST-V5N7Q2YMC3YLP5QW dst udp dport 53 counter packets 0 bytes 0 meta mark set mark or 0x10000  # handle 33
+		meta l4proto udp  # match-set KUBE-SRC-ZS4MTCIZPF4CWF2S src # match-set KUBE-DST-V5N7Q2YMC3YLP5QW dst udp dport 53 meta mark & 0x00010000 == 0x00010000 counter packets 0 bytes 0 return # handle 34
+		meta l4proto tcp  # match-set KUBE-SRC-ZS4MTCIZPF4CWF2S src # match-set KUBE-DST-V5N7Q2YMC3YLP5QW dst tcp dport 53 counter packets 0 bytes 0 meta mark set mark or 0x10000  # handle 35
+		meta l4proto tcp  # match-set KUBE-SRC-ZS4MTCIZPF4CWF2S src # match-set KUBE-DST-V5N7Q2YMC3YLP5QW dst tcp dport 53 meta mark & 0x00010000 == 0x00010000 counter packets 0 bytes 0 return # handle 36
+		meta l4proto tcp  # match-set KUBE-SRC-ZS4MTCIZPF4CWF2S src # match-set KUBE-DST-74YNPXC2YKYKFSRH dst tcp dport 8443 counter packets 0 bytes 0 meta mark set mark or 0x10000  # handle 37
+		meta l4proto tcp  # match-set KUBE-SRC-ZS4MTCIZPF4CWF2S src # match-set KUBE-DST-74YNPXC2YKYKFSRH dst tcp dport 8443 meta mark & 0x00010000 == 0x00010000 counter packets 0 bytes 0 return # handle 38
+		 # match-set KUBE-SRC-ZS4MTCIZPF4CWF2S src # match-set KUBE-DST-CPBT437WQMCPQKVR dst counter packets 0 bytes 0 meta mark set mark or 0x10000  # handle 39
+		 # match-set KUBE-SRC-ZS4MTCIZPF4CWF2S src # match-set KUBE-DST-CPBT437WQMCPQKVR dst meta mark & 0x00010000 == 0x00010000 counter packets 0 bytes 0 return # handle 40
+		meta l4proto tcp  # match-set KUBE-SRC-ZS4MTCIZPF4CWF2S src # match-set KUBE-DST-QEL6WPUUNXCVKCUV dst tcp dport 3306 counter packets 0 bytes 0 meta mark set mark or 0x10000  # handle 41
+		meta l4proto tcp  # match-set KUBE-SRC-ZS4MTCIZPF4CWF2S src # match-set KUBE-DST-QEL6WPUUNXCVKCUV dst tcp dport 3306 meta mark & 0x00010000 == 0x00010000 counter packets 0 bytes 0 return # handle 42
+		 # match-set KUBE-SRC-ZS4MTCIZPF4CWF2S src # match-set KUBE-DST-K6F3VIP3GNCK3CUE dst counter packets 0 bytes 0 meta mark set mark or 0x10000  # handle 43
+		 # match-set KUBE-SRC-ZS4MTCIZPF4CWF2S src # match-set KUBE-DST-K6F3VIP3GNCK3CUE dst meta mark & 0x00010000 == 0x00010000 counter packets 0 bytes 0 return # handle 44
+	}
+}

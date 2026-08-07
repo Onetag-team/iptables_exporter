@@ -91,15 +91,15 @@ func (c *collector) Describe(descChan chan<- *prometheus.Desc) {
 
 func (c *collector) Collect(metricChan chan<- prometheus.Metric) {
 	start := time.Now()
-	tables, err := iptables.GetTables()
+	tables, err := iptables.GetTablesNft()
 	duration := time.Since(start)
 	if err == nil && len(tables) == 0 {
-		err = errors.New("no output from iptables-save; this is probably due to insufficient permissions")
+		err = errors.New("no output from nft; this is probably due to insufficient permissions")
 	}
 	metricChan <- prometheus.MustNewConstMetric(scrapeDurationDesc, prometheus.GaugeValue, duration.Seconds())
 	if err != nil {
 		metricChan <- prometheus.MustNewConstMetric(scrapeSuccessDesc, prometheus.GaugeValue, 0)
-		level.Error(c.logger).Log("msg", "no output from iptables-save; this is probably due to insufficient permissions")
+		level.Error(c.logger).Log("msg", "failed to scrape nft ruleset", "err", err)
 		return
 	}
 	metricChan <- prometheus.MustNewConstMetric(scrapeSuccessDesc, prometheus.GaugeValue, 1)
