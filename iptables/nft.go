@@ -147,6 +147,7 @@ func ParseNftRuleset(jsonData, textData []byte) (Tables, error) {
 				Packets: packets,
 				Bytes:   bytes,
 				Rule:    ruleText[nftRuleKey{table: r.Table, chain: r.Chain, handle: r.Handle}],
+				Handle:  r.Handle,
 			})
 			table[r.Chain] = chain
 		}

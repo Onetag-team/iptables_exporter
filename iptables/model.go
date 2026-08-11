@@ -29,4 +29,12 @@ type Rule struct {
 	Packets uint64
 	Bytes   uint64
 	Rule    string
+	// Handle is the nft rule handle (0 when the data came from
+	// iptables-save, which has no such concept). Unlike Rule, which is
+	// free-form text nft renders and can render identically for two
+	// distinct rules when it can't fully decode a match (e.g. two
+	// separate ipset matches both falling back to the same generic
+	// `xt match "set"` placeholder), the handle is always unique within
+	// a chain - it's what lets the exporter tell such rules apart.
+	Handle uint64
 }

@@ -145,3 +145,54 @@ func TestParseNftRuleset_PreservesNotrackPorts(t *testing.T) {
 		}
 	}
 }
+
+// duplicate-rule-text.nft.json / .txt reproduce a case seen in production:
+// on that node's nft version, two rules with different (but both
+// ipset-based) matches both fall back to the same generic
+// "xt match \"set\"" placeholder, so their rendered Rule text is
+// byte-for-byte identical - two pairs of rules end up with only two
+// distinct texts across four rules. Rule.Rule alone can't tell them apart;
+// Rule.Handle must, since nft handles are always unique within a chain.
+func TestParseNftRuleset_HandleDisambiguatesIdenticalRuleText(t *testing.T) {
+	jsonData, err := os.ReadFile("duplicate-rule-text.nft.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	textData, err := os.ReadFile("duplicate-rule-text.nft.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tables, err := ParseNftRuleset(jsonData, textData)
+	if err != nil {
+		t.Fatalf("ParseNftRuleset: %+v", err)
+	}
+
+	chain, ok := tables["filter"]["KUBE-NWPLCY-GQ3Y6LWXVUDXXD3V"]
+	if !ok {
+		t.Fatal("expected the KUBE-NWPLCY-GQ3Y6LWXVUDXXD3V chain")
+	}
+	if len(chain.Rules) != 4 {
+		t.Fatalf("expected 4 rules, got %d", len(chain.Rules))
+	}
+
+	var duplicateTextSeen bool
+	seenTextCount := make(map[string]int)
+	seenHandles := make(map[uint64]bool)
+	for _, rule := range chain.Rules {
+		seenTextCount[rule.Rule]++
+		if seenTextCount[rule.Rule] > 1 {
+			duplicateTextSeen = true
+		}
+		if rule.Handle == 0 {
+			t.Fatalf("rule %q: expected a non-zero handle from nft", rule.Rule)
+		}
+		if seenHandles[rule.Handle] {
+			t.Fatalf("handle %d reused across rules - it must be unique to disambiguate identical rule text", rule.Handle)
+		}
+		seenHandles[rule.Handle] = true
+	}
+	if !duplicateTextSeen {
+		t.Fatal("fixture is supposed to reproduce identical rule text across rules; it no longer does, test is stale")
+	}
+}

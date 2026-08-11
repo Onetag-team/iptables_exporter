@@ -1,0 +1,8 @@
+table ip filter { # handle 1
+	chain KUBE-NWPLCY-GQ3Y6LWXVUDXXD3V { # handle 10
+		xt match "set" xt match "set" counter packets 0 bytes 0 meta mark set mark or 0x10000  # handle 33
+		xt match "set" xt match "set" meta mark & 0x00010000 == 0x00010000 counter packets 0 bytes 0 return # handle 34
+		xt match "set" xt match "set" counter packets 0 bytes 0 meta mark set mark or 0x10000  # handle 35
+		xt match "set" xt match "set" meta mark & 0x00010000 == 0x00010000 counter packets 0 bytes 0 return # handle 36
+	}
+}

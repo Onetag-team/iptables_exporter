@@ -18,6 +18,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -65,17 +66,23 @@ var (
 		nil,
 	)
 
+	// "handle" (the nft rule handle) is included alongside the free-form
+	// "rule" text because nft can render two distinct rules with
+	// identical text when it can't fully decode one of their matches
+	// (e.g. two different ipset matches both falling back to the same
+	// generic placeholder) - without it, such rules collide as
+	// duplicate Prometheus series and the collector panics.
 	ruleBytesDesc = prometheus.NewDesc(
 		"iptables_rule_bytes_total",
 		"iptables_exporter: Total bytes matching a rule.",
-		[]string{"table", "chain", "rule"},
+		[]string{"table", "chain", "rule", "handle"},
 		nil,
 	)
 
 	rulePacketsDesc = prometheus.NewDesc(
 		"iptables_rule_packets_total",
 		"iptables_exporter: Total packets matching a rule.",
-		[]string{"table", "chain", "rule"},
+		[]string{"table", "chain", "rule", "handle"},
 		nil,
 	)
 )
@@ -123,6 +130,7 @@ func (c *collector) Collect(metricChan chan<- prometheus.Metric) {
 				chain.Policy,
 			)
 			for _, rule := range chain.Rules {
+				handle := strconv.FormatUint(rule.Handle, 10)
 				metricChan <- prometheus.MustNewConstMetric(
 					rulePacketsDesc,
 					prometheus.CounterValue,
@@ -130,6 +138,7 @@ func (c *collector) Collect(metricChan chan<- prometheus.Metric) {
 					tableName,
 					chainName,
 					rule.Rule,
+					handle,
 				)
 				metricChan <- prometheus.MustNewConstMetric(
 					ruleBytesDesc,
@@ -138,6 +147,7 @@ func (c *collector) Collect(metricChan chan<- prometheus.Metric) {
 					tableName,
 					chainName,
 					rule.Rule,
+					handle,
 				)
 			}
 		}
